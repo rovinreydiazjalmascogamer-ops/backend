@@ -1,6 +1,7 @@
 // auth validators.js
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\+?[\d\s()-]{7,20}$/;
+const FULL_NAME_REGEX = /^[A-Za-z]+(?:[ '\-\.][A-Za-z]+)+$/;
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
 
 const validateSignup = (req, res, next) => {
@@ -10,8 +11,18 @@ const validateSignup = (req, res, next) => {
         return res.status(400).json({ message: 'All fields are required' });
     }
 
-    if (typeof user_name !== 'string' || user_name.trim().length < 2 || user_name.trim().length > 50) {
-        return res.status(400).json({ message: 'Username must be between 2 and 50 characters' });
+    const trimmedName = String(user_name).trim();
+    if (typeof user_name !== 'string' || trimmedName.length < 2 || trimmedName.length > 50) {
+        return res.status(400).json({ message: 'Full name must be between 2 and 50 characters' });
+    }
+
+    const nameParts = trimmedName.split(/\s+/).filter(Boolean);
+    if (nameParts.length < 2) {
+        return res.status(400).json({ message: 'Please enter your full name (first and last name).' });
+    }
+
+    if (!FULL_NAME_REGEX.test(trimmedName)) {
+        return res.status(400).json({ message: 'Full name contains invalid characters.' });
     }
 
     const trimmedIdentifier = String(identifier).trim();

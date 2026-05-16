@@ -43,7 +43,6 @@ exports.getReadyPrograms = async () => {
     SELECT 
       program_id,
       program_name,
-      program_type,
       location,
       slots,
       filled,
@@ -52,7 +51,7 @@ exports.getReadyPrograms = async () => {
       start_date,
       end_date
     FROM programs
-    WHERE status = 'ready'
+    WHERE status IN ('active', 'ongoing')
     ORDER BY start_date ASC
   `);
   return programs;

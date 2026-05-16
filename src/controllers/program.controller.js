@@ -83,7 +83,7 @@ exports.createProgram = async (req, res) => {
     }
 };
 
-// Get READY programs for beneficiary dashboard
+// Get active/ongoing programs for beneficiary dashboard
 exports.getReadyPrograms = async (req, res) => {
     try {
         const programs = await programsService.getReadyPrograms();

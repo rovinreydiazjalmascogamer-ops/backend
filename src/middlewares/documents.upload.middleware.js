@@ -25,6 +25,8 @@ const fileFilter = (_req, file, cb) => {
         'image/png',
         'image/webp',
         'application/pdf',
+        'application/x-pdf',
+        'application/x-google-chrome-pdf',
     ];
     if (allowedMimeTypes.includes(file.mimetype)) {
         cb(null, true);
@@ -36,7 +38,7 @@ const fileFilter = (_req, file, cb) => {
 const documentsUpload = multer({
     storage,
     fileFilter,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
 });
 
 module.exports = documentsUpload;

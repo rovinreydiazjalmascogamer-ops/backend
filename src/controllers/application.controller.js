@@ -1214,10 +1214,7 @@ exports.exportAnnexD = async (req, res) => {
 
         annexWriteDataRows(ws, headerSubRow, dataRows);
 
-        const sigRow = headerSubRow + rows.length + 3;
-        annexWriteSignatureBlock(ws, 'V', sigRow);
-
-        // ── Respond ──
+        // Note: Annex D (TUPAD) does not include a signature block.
         const filename = `Annex_D_TUPAD_Beneficiaries_${new Date().toISOString().slice(0, 10)}.xlsx`;
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename=${filename}`);

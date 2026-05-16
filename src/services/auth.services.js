@@ -18,6 +18,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Phone regex: digits with optional +, -, (), spaces (7-15 digits)
 const PHONE_REGEX = /^\+?[\d\s()-]{7,20}$/;
+const FULL_NAME_REGEX = /^[A-Za-z]+(?:[ '\-\.][A-Za-z]+)+$/;
 
 // Password: min 8 chars, at least 1 uppercase, 1 lowercase, 1 digit, 1 special
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
@@ -32,8 +33,22 @@ const signup = async (body) => {
         throw error;
     }
 
-    if (user_name.length < 2 || user_name.length > 50) {
-        const error = new Error('Username must be between 2 and 50 characters');
+    const trimmedName = String(user_name).trim();
+    if (trimmedName.length < 2 || trimmedName.length > 50) {
+        const error = new Error('Full name must be between 2 and 50 characters');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const nameParts = trimmedName.split(/\s+/).filter(Boolean);
+    if (nameParts.length < 2) {
+        const error = new Error('Please enter your full name (first and last name).');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    if (!FULL_NAME_REGEX.test(trimmedName)) {
+        const error = new Error('Full name contains invalid characters.');
         error.statusCode = 400;
         throw error;
     }
@@ -67,16 +82,41 @@ const signup = async (body) => {
         phone = trimmedIdentifier;
     }
 
-    // check if email or phone already exists
+    // check if full name, email or phone already exists
     try {
         const [existingUsers] = await db.execute(
-            'SELECT user_id FROM users WHERE email = ? OR phone = ?',
-            [email, phone]
+            'SELECT user_id, user_name, email, phone FROM users WHERE user_name = ? OR email = ? OR phone = ?',
+            [trimmedName, email, phone]
         );
+
         if (existingUsers.length > 0) {
-            const error = new Error('Email or phone number already in use');
-            error.statusCode = 409;
-            throw error;
+            const existingName = existingUsers.find((u) =>
+                u.user_name && String(u.user_name).trim().toLowerCase() === trimmedName.toLowerCase()
+            );
+            const existingEmail = email
+                ? existingUsers.find((u) => u.email === email)
+                : null;
+            const existingPhone = phone
+                ? existingUsers.find((u) => u.phone === phone)
+                : null;
+
+            if (existingName) {
+                const error = new Error('Full name is already registered');
+                error.statusCode = 409;
+                throw error;
+            }
+
+            if (existingEmail) {
+                const error = new Error('Email is already in use');
+                error.statusCode = 409;
+                throw error;
+            }
+
+            if (existingPhone) {
+                const error = new Error('Phone number is already in use');
+                error.statusCode = 409;
+                throw error;
+            }
         }
 
         const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);

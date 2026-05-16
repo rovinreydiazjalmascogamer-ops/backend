@@ -7,6 +7,9 @@ const { validateProgram, validateBudgetUpdate } = require('../validators/program
 // Get all programs (authenticated users)
 router.get('/allPrograms', authMiddleware, programController.getAllPrograms);
 
+// Get READY programs for beneficiary dashboard
+router.get('/ready', authMiddleware, programController.getReadyPrograms);
+
 // Get active programs by type (for beneficiary program picker)
 router.get('/active/:programType', authMiddleware, programController.getActiveByType);
 
