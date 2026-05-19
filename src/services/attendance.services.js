@@ -11,8 +11,16 @@ const ensureAttendanceTable = async () => {
     CREATE TABLE IF NOT EXISTS attendance_records (
       attendance_id INT PRIMARY KEY AUTO_INCREMENT,
       user_id INT NOT NULL,
+      program_id INT DEFAULT NULL,
       program_type VARCHAR(30) NULL,
       attendance_date DATE NOT NULL,
+      report_date DATE DEFAULT NULL,
+      work_day VARCHAR(100) DEFAULT NULL,
+      period_of_work TEXT DEFAULT NULL,
+      detail_of_work TEXT DEFAULT NULL,
+      before_photo_path TEXT DEFAULT NULL,
+      during_photo_path TEXT DEFAULT NULL,
+      after_photo_path TEXT DEFAULT NULL,
       time_in DATETIME NULL,
       time_out DATETIME NULL,
       status ENUM('Present', 'Incomplete', 'Absent') DEFAULT 'Incomplete',
@@ -20,21 +28,45 @@ const ensureAttendanceTable = async () => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       UNIQUE KEY uniq_user_day (user_id, attendance_date),
+      KEY fk_attendance_program (program_id),
       FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
     )
   `;
 
   await db.execute(createTableQuery);
 
-  // Ensure 'Absent' value exists in the ENUM for existing tables
+  const columnUpdates = [
+    `ALTER TABLE attendance_records MODIFY COLUMN status ENUM('Present', 'Incomplete', 'Absent') DEFAULT 'Incomplete'`,
+    `ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS program_id INT DEFAULT NULL AFTER user_id`,
+    `ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS report_date DATE DEFAULT NULL AFTER attendance_date`,
+    `ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS work_day VARCHAR(100) DEFAULT NULL AFTER report_date`,
+    `ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS period_of_work TEXT DEFAULT NULL AFTER work_day`,
+    `ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS detail_of_work TEXT DEFAULT NULL AFTER period_of_work`,
+    `ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS before_photo_path TEXT DEFAULT NULL AFTER detail_of_work`,
+    `ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS during_photo_path TEXT DEFAULT NULL AFTER before_photo_path`,
+    `ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS after_photo_path TEXT DEFAULT NULL AFTER during_photo_path`,
+    `ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS program_type VARCHAR(30) NULL AFTER program_id`,
+  ];
+
+  for (const sql of columnUpdates) {
+    try {
+      await db.execute(sql);
+    } catch (_) {
+      // ignore if already exists or unsupported syntax
+    }
+  }
+
   try {
-    await db.execute(`ALTER TABLE attendance_records MODIFY COLUMN status ENUM('Present', 'Incomplete', 'Absent') DEFAULT 'Incomplete'`);
+    await db.execute(`ALTER TABLE attendance_records ADD KEY fk_attendance_program (program_id)`);
   } catch (_) {
-    // ignore if already correct
+    // ignore if already exists or unsupported syntax
   }
 
   tableEnsured = true;
 };
+
+exports.ensureAttendanceTable = ensureAttendanceTable;
+
 
 const getLatestProgram = async (userId) => {
   const query = `

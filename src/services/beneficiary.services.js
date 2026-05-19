@@ -592,15 +592,24 @@ exports.getTupadMonthlyReport = async (monthInput) => {
     CREATE TABLE IF NOT EXISTS attendance_records (
       attendance_id INT PRIMARY KEY AUTO_INCREMENT,
       user_id INT NOT NULL,
+      program_id INT DEFAULT NULL,
       program_type VARCHAR(30) NULL,
       attendance_date DATE NOT NULL,
+      report_date DATE DEFAULT NULL,
+      work_day VARCHAR(100) DEFAULT NULL,
+      period_of_work TEXT DEFAULT NULL,
+      detail_of_work TEXT DEFAULT NULL,
+      before_photo_path TEXT DEFAULT NULL,
+      during_photo_path TEXT DEFAULT NULL,
+      after_photo_path TEXT DEFAULT NULL,
       time_in DATETIME NULL,
       time_out DATETIME NULL,
-      status ENUM('Present', 'Incomplete') DEFAULT 'Incomplete',
+      status ENUM('Present', 'Incomplete', 'Absent') DEFAULT 'Incomplete',
       remarks VARCHAR(255) NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       UNIQUE KEY uniq_user_day (user_id, attendance_date),
+      KEY fk_attendance_program (program_id),
       FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
     )
   `);

@@ -9,6 +9,7 @@ const spesService = require('../services/spes.services');
 const gipService = require('../services/gip.services');
 const jobseekerService = require('../services/jobseeker.services');
 const beneficiaryService = require('../services/beneficiary.services');
+const attendanceService = require('../services/attendance.services');
 
 /** @param {string|Date|null|undefined} birthDate */
 function annexCalculateAge(birthDate) {
@@ -201,7 +202,7 @@ exports.applyToTupad = async (req, res) => {
 
 exports.createTupadReport = async (req, res) => {
     try {
-        const { program_id, period_of_work, detail_of_work } = req.body;
+        const { program_id, report_date, work_day, period_of_work, detail_of_work } = req.body;
         if (!program_id || !period_of_work || !detail_of_work) {
             return res.status(400).json({ message: 'program_id, period_of_work, and detail_of_work are required' });
         }
@@ -211,11 +212,32 @@ exports.createTupadReport = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const query = `
-            INSERT INTO tupad_reports (program_id, period_of_work, detail_of_work, created_by)
-            VALUES (?, ?, ?, ?)
-        `;
-        const [result] = await db.execute(query, [program_id, period_of_work, detail_of_work, createdBy]);
+        await attendanceService.ensureAttendanceTable();
+
+        const reportDate = report_date || new Date().toISOString().slice(0, 10);
+        const [existingRows] = await db.execute(
+            'SELECT attendance_id FROM attendance_records WHERE user_id = ? AND attendance_date = ? LIMIT 1',
+            [createdBy, reportDate]
+        );
+
+        let result;
+        if (existingRows.length > 0) {
+            const attendanceId = existingRows[0].attendance_id;
+            const updateQuery = `
+                UPDATE attendance_records
+                SET program_id = ?, program_type = 'tupad', report_date = ?, work_day = ?, period_of_work = ?, detail_of_work = ?, remarks = COALESCE(remarks, 'Annex K report')
+                WHERE attendance_id = ?
+            `;
+            [result] = await db.execute(updateQuery, [program_id, reportDate, work_day || null, period_of_work, detail_of_work, attendanceId]);
+            result.insertId = attendanceId;
+        } else {
+            const insertQuery = `
+                INSERT INTO attendance_records 
+                  (user_id, program_id, program_type, attendance_date, report_date, work_day, period_of_work, detail_of_work, status, remarks)
+                VALUES (?, ?, 'tupad', ?, ?, ?, ?, ?, 'Incomplete', 'Annex K report')
+            `;
+            [result] = await db.execute(insertQuery, [createdBy, program_id, reportDate, reportDate, work_day || null, period_of_work, detail_of_work]);
+        }
 
         res.status(201).json({ message: 'TUPAD report created successfully', report_id: result.insertId });
     } catch (error) {
@@ -226,6 +248,8 @@ exports.createTupadReport = async (req, res) => {
 
 exports.uploadTupadReportPhotos = async (req, res) => {
     try {
+        await attendanceService.ensureAttendanceTable();
+
         const { reportId } = req.params;
         const files = req.files || {};
         const updateFields = [];
@@ -249,7 +273,7 @@ exports.uploadTupadReportPhotos = async (req, res) => {
         }
 
         params.push(reportId);
-        const query = `UPDATE tupad_reports SET ${updateFields.join(', ')} WHERE report_id = ?`;
+        const query = `UPDATE attendance_records SET ${updateFields.join(', ')} WHERE attendance_id = ?`;
         const [result] = await db.execute(query, params);
 
         if (result.affectedRows === 0) {
@@ -270,10 +294,12 @@ exports.uploadTupadReportPhotos = async (req, res) => {
 
 exports.getTupadReports = async (req, res) => {
     try {
+        await attendanceService.ensureAttendanceTable();
+
         const programId = req.query.program_id ? Number(req.query.program_id) : null;
-        const whereClause = programId ? 'WHERE program_id = ?' : '';
+        const whereClause = programId ? 'WHERE program_id = ? AND program_type = \'tupad\' AND period_of_work IS NOT NULL' : 'WHERE program_type = \'tupad\' AND period_of_work IS NOT NULL';
         const params = programId ? [programId] : [];
-        const query = `SELECT * FROM tupad_reports ${whereClause} ORDER BY created_at DESC`;
+        const query = `SELECT * FROM attendance_records ${whereClause} ORDER BY updated_at DESC`;
         const [reports] = await db.execute(query, params);
         res.status(200).json(reports);
     } catch (error) {
@@ -284,8 +310,10 @@ exports.getTupadReports = async (req, res) => {
 
 exports.getTupadReport = async (req, res) => {
     try {
+        await attendanceService.ensureAttendanceTable();
+
         const { reportId } = req.params;
-        const query = 'SELECT * FROM tupad_reports WHERE report_id = ?';
+        const query = 'SELECT * FROM attendance_records WHERE attendance_id = ? AND program_type = \'tupad\' AND period_of_work IS NOT NULL';
         const [reports] = await db.execute(query, [reportId]);
         if (!Array.isArray(reports) || reports.length === 0) {
             return res.status(404).json({ message: 'Report not found' });
@@ -1877,37 +1905,40 @@ exports.exportAnnexK = async (req, res) => {
         const values = [];
 
         if (programId) {
-            whereClauses.push('tr.program_id = ?');
+            whereClauses.push('ar.program_id = ?');
             values.push(programId);
         }
 
         if (reportId) {
-            whereClauses.push('tr.report_id = ?');
+            whereClauses.push('ar.attendance_id = ?');
             values.push(reportId);
         }
 
-        const whereClause = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+        const whereClause = whereClauses.length ? `AND ${whereClauses.join(' AND ')}` : '';
 
         const query = `
             SELECT
-                tr.report_id,
-                tr.program_id,
-                tr.period_of_work,
-                tr.detail_of_work,
-                tr.before_photo_path,
-                tr.during_photo_path,
-                tr.after_photo_path,
-                tr.created_by,
-                tr.created_at,
+                ar.attendance_id AS report_id,
+                ar.program_id,
+                ar.attendance_date AS report_date,
+                ar.work_day,
+                ar.period_of_work,
+                ar.detail_of_work,
+                ar.before_photo_path,
+                ar.during_photo_path,
+                ar.after_photo_path,
+                ar.user_id AS created_by,
+                ar.created_at,
                 p.program_name,
                 p.program_type,
                 u.first_name as creator_first_name,
                 u.last_name as creator_last_name
-            FROM tupad_reports tr
-            LEFT JOIN programs p ON tr.program_id = p.program_id
-            LEFT JOIN users u ON tr.created_by = u.user_id
+            FROM attendance_records ar
+            LEFT JOIN programs p ON ar.program_id = p.program_id
+            LEFT JOIN users u ON ar.user_id = u.user_id
+            WHERE ar.period_of_work IS NOT NULL AND ar.program_type = 'tupad'
             ${whereClause}
-            ORDER BY tr.created_at ASC
+            ORDER BY ar.created_at ASC
         `;
 
         const [reports] = await db.execute(query, values);
